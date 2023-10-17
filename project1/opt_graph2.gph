@@ -1,0 +1,12 @@
+fixedacidity,fixedacidity
+citricacid,fixedacidity
+citricacid,citricacid
+totalsulfurdioxide,totalsulfurdioxide
+totalsulfurdioxide,alcohol
+density,citricacid
+density,density
+density,sulphates
+sulphates,sulphates
+alcohol,density
+alcohol,sulphates
+alcohol,alcohol

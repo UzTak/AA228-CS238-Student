@@ -114,7 +114,7 @@ end
     # Return 
     - `M`: an array of count matrices (length n, each is q x r; q: # of instantiation of parents, r: # of instantiation of the variable)
 """
-function statistics(vars, G, D::Matrix{Int})
+function statistics(vars, G, D)  # D::Matrix{Int}
     n = size(D,1) 
     r = [vars[i].r for i in 1:n]  # list the # of instantiation of nodes 
     q = [prod([r[j] for j in inneighbors(G, i)]) for i in 1:n]  # parent's instantiation
@@ -185,3 +185,119 @@ function bayesian_score(vars, G, D)
     return sum(bayesian_score_component(M[i], α[i]) for i in 1:n) 
 end
 
+
+"""
+    init_data(fname)
+    # Arguments 
+    - `fname`: a file name of the data set
+    # Return 
+    - `vars`: Variable struct
+    - `G`: a DiGraph
+    - `D`: a matrix of discrete data set (n x m, n: # of var, m: # of samples)
+    - `p`: bayesian score of the unconnected graph 
+"""
+function init_data(fname)
+    df = CSV.File(fname) |> DataFrame
+    data_mat = Matrix(df);
+    column_names = names(df)
+    num_instance = [maximum(data_mat[:, i]) - minimum(data_mat[:, i]) + 1 for i in 1:size(data_mat, 2)]
+    vars = [Variable(Symbol(column_names[i]), num_instance[i]) for i in 1:length(column_names)]
+    G = SimpleDiGraph(length(column_names)) 
+    D = data_mat'
+    p = bayesian_score(vars, G, data_mat')   # feed transposed data!!!!
+    return vars, G, D, p 
+end
+
+
+function write_gph(dag::DiGraph, idx2names, filename)
+    open(filename, "w") do io
+        for edge in edges(dag)
+            @printf(io, "%s,%s\n", idx2names[src(edge)], idx2names[dst(edge)])
+        end
+    end
+end
+
+# ===== algorithm =====================================================================
+
+struct K2Search 
+    ordering::Vector{Int}    # variable ordering 
+end
+
+
+function fit(method::K2Search, vars, D)
+    G = SimpleDiGraph(length(vars))
+    y = 0
+    for (k,i) in enumerate(method.ordering[2:end])
+        y = bayesian_score(vars, G, D)
+        while true 
+            y_best, j_best = -Inf, 0 
+            for j in method.ordering[1:k]
+                if !has_edge(G, j, i)
+                    add_edge!(G, j, i)
+                    y_new = bayesian_score(vars, G, D)
+                    if y_new > y_best 
+                        y_best, j_best = y_new, j 
+                    end 
+                    rem_edge!(G, j, i)
+                end
+            end 
+            # select and add the best edge 
+            if y_best > y 
+                y = y_best 
+                add_edge!(G, j_best, i)
+            else 
+                break
+            end
+        end 
+    end
+    return G, y
+end 
+
+
+
+struct LocalDirectedGraphSearch
+    G   # initial graph 
+    k_max  # num of iteration 
+end 
+
+function rand_graph_neighbor(G)
+    n = nv(G)  # num of vertices 
+    i = rand(1:n)  # randomly select a vertex
+    j = mod1(i + rand(2:n)-1, n)  # randomly select a neighbor of i
+    G_ = copy(G) 
+    has_edge(G_, i, j) ? rem_edge!(G_, i, j) : add_edge!(G_, i, j)
+    return G_
+end 
+
+function fit(method::LocalDirectedGraphSearch, vars, D)
+    G = method.G 
+    y = bayesian_score(vars, G, D)
+    for k in 1:method.k_max
+        G_ = rand_graph_neighbor(G)
+        y_ = is_cyclic(G_) ? -Inf : bayesian_score(vars, G_, D)
+        if y_ > y 
+            G = G_
+            y = y_
+        end
+    end 
+    return G, y
+end 
+
+
+function permutations(arr)
+    n = length(arr)
+    if n == 1
+        return [arr]
+    else
+        perms = []
+        for i = 1:n
+            first_elem = arr[i]
+            rest = [arr[j] for j in 1:n if j != i]
+            subperms = permutations(rest)
+            for p in subperms
+                push!(perms, [first_elem; p])
+            end
+        end
+        return perms
+    end
+end
