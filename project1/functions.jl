@@ -120,8 +120,6 @@ function statistics(vars, G, D)  # D::Matrix{Int}
     q = [prod([r[j] for j in inneighbors(G, i)]) for i in 1:n]  # parent's instantiation
     M = [zeros(q[i], r[i]) for i in 1:n]
     
-#     println(r)
-
     for o in eachcol(D)   # each data sample 
         for i in 1:n      # each node 
             k = o[i]      # r_i
@@ -129,7 +127,6 @@ function statistics(vars, G, D)  # D::Matrix{Int}
             j = 1 
             if !isempty(parents)
                 j = sub2ind(r[parents], o[parents])  # q_i; get the index of the instantiation of parents
-#                 println(parents, r[parents], o[parents], j)
             end 
             M[i][j,k] += 1.0 
         end 
@@ -153,6 +150,7 @@ function prior(vars, G)
     return [ones(q[i], r[i]) for i in 1:n]
 end 
 
+
 """
     bayesian_score_component(M, α)
     # Arguments 
@@ -162,7 +160,7 @@ end
     - `p`: component of bayseian score (summed up through q_i and r_i, i.e., each node)
 """
 function bayesian_score_component(M, α) 
-    p = sum(loggamma.(α + M)) 
+    p =  sum(loggamma.(α + M)) 
     p -= sum(loggamma.(α)) 
     p += sum(loggamma.(sum(α,dims=2))) 
     p -= sum(loggamma.(sum(α,dims=2) + sum(M,dims=2))) 

@@ -1,10 +1,10 @@
 age,sex
-protembarked,sex
+portembarked,sex
 fare,passengerclass
 numparentschildren,age
 numparentschildren,sex
 passengerclass,age
-passengerclass,protembarked
+passengerclass,portembarked
 passengerclass,sex
 passengerclass,survived
 sex,survived

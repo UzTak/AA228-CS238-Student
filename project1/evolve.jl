@@ -23,7 +23,9 @@ function order_crossover(indiv1, indiv2)
     # Create a child with the genetic material between the crossover points
     child = zeros(Int, n)
     child[start:stop] .= indiv1[start:stop]
-    
+    child_ = child
+    println(child_)
+
     # Fill the remaining positions with genes from the second parent in order
     pos = 1
     for i in 1:n
@@ -32,15 +34,18 @@ function order_crossover(indiv1, indiv2)
         end
         
         if pos > n
-            pos = 1  # Reset pos if it exceeds n
+            break 
         end
 
-        if indiv2[i] != child
-            # println(pos)
+        if !(indiv2[i] in child)
+            # println("adding $(indiv2[i]) at $pos")
             child[pos] = indiv2[i]
             pos += 1
         end
+    end
 
+    if sum(child) != sum(1:n)
+        error("child has not correct permutation")
     end
     return child
 end
