@@ -2,6 +2,7 @@ using Printf
 using DataFrames
 using CSV
 using LinearAlgebra
+using ProgressMeter
 
 
 struct MDP 
@@ -42,6 +43,7 @@ lookahead(model::QLearning, s,a) = model.Q[s,a]
 
 function update!(model::QLearning, s,a,r,s_)
     γ, Q, α = model.γ, model.Q, model.α
+    # println("s: ", s, "a: ",a)
     Q[s,a] += α*(r + maximum(Q[s_, :]) - Q[s,a])  # update of Q-function
     return model 
 end 
@@ -176,8 +178,9 @@ end
 """ Training """
 
 # algorithm 15.9
+
 function train_online(𝒫::MDP, model, π, h, s) 
-    for i in 1:h 
+    @showprogress for i in 1:h 
         a = π(model, s) 
         s′, r = 𝒫.TR(s, a) 
         update!(model, s, a, r, s′)  # update model from the sample (s,a,r,s_)
@@ -185,8 +188,16 @@ function train_online(𝒫::MDP, model, π, h, s)
     end 
 end
 
+function train_offline(𝒫::MDP, model::QLearning, df, h)
+    @showprogress for i in 1:h 
+        s,a,r,s_ = sample_data(model, df)
+        update!(model, s,a,r,s_)
+    end
+end
+
+
 function train_offline(𝒫::MDP, model::SarsaLambda, df, h) 
-    for i in 1:h 
+    @showprogress for i in 1:h 
         s, a, r, s_ = sample_data(model, df)   # TODO: add ϵ after implementing the ϵ-greedy in sample_data()
         update!(model, s, a, r, s_)  # update model from the sample (s,a,r,s_)
     end 
@@ -194,13 +205,40 @@ end
 
 
 function train_offline(𝒫::MDP, model::GradientQLearning, df, h) 
-    for i in 1:h 
+    @showprogress for i in 1:h 
         s, a, r, s_ = sample_data(model, df)   # TODO: add ϵ after implementing the ϵ-greedy in sample_data()
         update!(model, s, a, r, s_, i, h)  # update model from the sample (s,a,r,s_)
     end 
 end
 
 
+function train_offline(𝒫::MDP, model::ReplayGradientQLearning, df, h) 
+    @showprogress for i in 1:h 
+        s, a, r, s_ = sample_data(model, df)   # TODO: add ϵ after implementing the ϵ-greedy in sample_data()
+        update!(model, s, a, r, s_)  # update model from the sample (s,a,r,s_)
+    end 
+end
+
+
+function train_offline_simple(𝒫::MDP, model::QLearning, df, k=1)
+    for _ in 1:k
+        println("data size: ", size(df,1))
+        @showprogress for i in 1:size(df,1)
+            s,a,r,s_ = df[i,1], df[i,2], df[i,3], df[i,4]
+            update!(model, s,a,r,s_)
+        end
+    end
+end
+
+function train_offline_simple(𝒫::MDP, model::SarsaLambda, df, k=1)
+    for _ in 1:k
+        println("data size: ", size(df,1))
+        @showprogress for i in 1:size(df,1)
+            s,a,r,s_ = df[i,1], df[i,2], df[i,3], df[i,4]
+            update!(model, s,a,r,s_)
+        end
+    end
+end
 
 
 """ Prevention of gradient overshooting """
@@ -210,6 +248,39 @@ clip_gradient(∇, a, b)    = clamp.(∇, a, b)
 
 
 """  Sampling technique """
+# for offline RL, sample a tuple (s,a,r,s_) to update a model
+
+function sample_data(model::QLearning, df, ϵ1=nothing, ϵ2 = 0.3)
+    row = size(df,1)
+    if !isnothing(ϵ1)   # ϵ-greedy? 
+        if rand() < ϵ1 
+            i = rand(1:row)
+            s, a, r, s_ = df.s[i], df.a[i], df.r[i], df.sp[i] 
+        else 
+            # TODO: greedy Q function search (discrete: look up Q table's row / continuous: ??)
+            # how to define the initial state if so? 
+            Qtable = model.Q
+
+        end 
+    else  # random sampling with reward bias 
+        # random sampling 
+        if rand() < ϵ2
+            idx = findall(df.r .> 0)  # find all the positive rewards
+            i = rand(idx) 
+        else
+            i = rand(1:row)
+        end 
+        
+        # s, a, r, s_ = [df.s_i[i], df.s_j[i]], df.a[i], df.r[i], [df.sp_i[i], df.sp_j[i]] 
+        s, a, r, s_ = df.s[i], df.a[i], df.r[i], df.sp[i] 
+        # println("sampled: ", s, " ", a, " ", r, " ", s_)
+
+    end
+    
+    return s, a, r, s_
+end 
+
+
 # for offline RL, sample a tuple (s,a,r,s_) to update a model
 function sample_data(model::GradientQLearning, df, ϵ1=nothing, ϵ2 = 0.2)
     row = size(df,1)
@@ -285,6 +356,35 @@ function sample_data(model::SarsaLambda, df, ϵ1=nothing, ϵ2 = 0.3)
     end
     
     return s, a, r, s_
+end 
+
+function sample_data(model::ReplayGradientQLearning, df, ϵ1=nothing, ϵ2 = 0.2)
+    row = size(df,1)
+    if !isnothing(ϵ1)   # ϵ-greedy? 
+        if rand() < ϵ1 
+            i = rand(1:row)
+            s, a, r, s_ = df.s[i], df.a[i], df.r[i], df.sp[i] 
+        else 
+            # TODO: greedy Q function search (discrete: look up Q table's row / continuous: ??)
+            # how to define the initial state if so? 
+            Qtable = model.Q
+
+        end 
+    else  # random sampling with reward bias 
+        # println("random sampling")
+        if rand() < ϵ2
+            idx = findall(df.r .> 0)  # find all the positive rewards
+            i = rand(idx) 
+        else
+            i = rand(1:row)
+        end 
+        # s, a, r, s_ = [df.s_i[i], df.s_j[i]], df.a[i], df.r[i], [df.sp_i[i], df.sp_j[i]]  # small.CSV
+        s, a, r, s_ = [df.pos[i], df.vel[i]], df.a[i], df.r[i], [df.pos_[i], df.vel_[i]]  # medium.CSV
+        
+        # println("sampled: ", s, " ", a, " ", r, " ", s_)
+        # s, a, r, s_ = df.s[i], df.a[i], df.r[i], df.sp[i] 
+    end
+        return s, a, r, s_
 end 
 
 
